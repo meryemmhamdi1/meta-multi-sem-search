@@ -1,0 +1,32 @@
+# This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
+
+# Libraries that only devs of your lib need should go here.
+
+name: multi_meta_ssd
+channels:
+  - conda-forge
+dependencies:
+  - python=3.8
+  - coverage[toml]=5.3
+  - pylint=2.9
+  - mypy=0.931
+  - black=22.1.0
+  - unittest-xml-reporting
+  - lxml
+  - tqdm
+  - pip
+  - transformers
+  - tensorboardx
+
+  - pip:
+    # If you use variant 1: source goes into tools/src
+    # - "--editable=git+ssh://git@git.corp.adobe.com/lagrange/tiny@v1.5.8#egg=tiny"
+
+    # If you use variant 2: source goes into the default location where pip installs
+    # libraries
+    # - git+ssh://git@git.corp.adobe.com/lagrange/tiny@v1.5.8
+    - learn2learn
+    - pyparsing
+    - torch # conda install pytorch==1.11.0 torchvision==0.12.0 torchaudio==0.11.0 cudatoolkit=11.3 -c pytorch
+    - sentence_transformers
+

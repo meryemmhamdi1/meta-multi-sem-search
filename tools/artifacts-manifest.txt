@@ -1,0 +1,1 @@
+"__fixtures__/sample-file.txt" "__fixtures__/sample-file.eb997b3.txt" eb997b38b0de8a19cc2e00407b4a87d51b3502f6c8fc6aa5c978ebad50e9a103

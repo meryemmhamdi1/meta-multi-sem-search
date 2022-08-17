@@ -1,0 +1,93 @@
+[tool.black]
+line_length = 160
+# extend_exclude = '''
+# /(
+#     folder_a
+#     | folder_b
+# )/
+# '''
+
+# ===========================[ ISORT ]========================
+
+[tool.isort]
+use_parentheses = true
+include_trailing_comma = true
+line_length = 160
+multi_line_output = 3
+# if need to skip something
+# skip = [ ]
+
+# ===========================[ COVERAGE ]========================
+
+[tool.coverage.run]
+branch = true
+data_file = '.coverage/coverage'
+parallel = true
+command_line = './tests/main.py'
+source = [
+        'multi_meta_ssd/',
+]
+# if skip needed
+# omit = []
+
+[tool.coverage.paths]
+source = [
+        'multi_meta_ssd/',
+]
+
+# ===========================[ MYPY ]========================
+
+# see https://mypy.readthedocs.io/en/stable/config_file.html for config file location
+# mypy also accepts per file configuration (comment starting with #mypy: ) https://mypy.readthedocs.io/en/stable/inline_config.html
+# Finally, adding `#type: ignore` after a line, disables mypy checking for that line
+
+[tool.mypy]
+warn_unused_configs = true
+
+# If anything needs to be excluded add them here.
+# exclude=['__fixtures__/']
+
+# Mypy expects typing available for dependencies.
+#
+# - Some dependencies ship with typing info already, for those nothing has to be done.
+# - mypy offers type info for some deps, such as `requests`. For those we have to install a separate package.
+#   these packages should be included in tools/dev-requirements.txt
+# - We can also write type info ourselves. These are knows as stub files and have a .pyi extension.
+#   They can go inside /stubs within the metabuild repo, and we can instruct mypy to look there by setting
+#   the mypy.mypy_path config.
+# - Last resort is just ignoring typing for that package. In that the config below will ask mypy to not
+#   complain about these packages that don't have typing.
+ignore_missing_imports = true
+
+
+# if need to override for certain modules
+# [[tool.mypy.overrides]]
+# no checking for builtin and vendor
+# module = [
+#    'multi_meta_ssd.vendor.*',
+# ]
+# ignore_errors = true
+
+# ===========================[ PYLINT ]========================
+[tool.pylint.MASTER]
+# If folders need to be ignored add them here.
+# ignore=[]
+
+[tool.pylint.'MESSAGES CONTROL']
+disable=[
+    'broad-except',
+    'missing-module-docstring',
+    'missing-class-docstring',
+    'missing-function-docstring',
+    'invalid-name',
+    'import-outside-toplevel',
+    'line-too-long',
+    'too-many-instance-attributes',
+    'fixme',
+    'too-many-arguments',
+    'too-few-public-methods',
+    'redefined-outer-name',
+    'too-many-branches',
+    'consider-using-from-import',
+    'duplicate-code',
+]

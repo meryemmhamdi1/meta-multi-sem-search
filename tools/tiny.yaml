@@ -1,0 +1,15 @@
+# Manifest file. This keeps track of things that need to be synced with artifactory.
+manifest: "artifacts-manifest.txt"
+# path to folder in repo to sink the artifacts to relative to tiny.yaml
+data_dir: "../data"
+# The artifactory repo.
+repo_url: "https://artifactory.corp.adobe.com/artifactory/generic-framework-hoshyari-dev-local/tiny/__fixtures__/example_repo2/"
+
+# if you want to have multiple manifests for separate sets of artifacts, you do that like this...
+# - manifest: "artifacts-manifest-1.txt"
+#   data_dir: "../test-data-1"
+#   repo_url: "https://artifactory.corp.adobe.com/artifactory/generic-my-repo-local/test-data-one/"
+#
+# - manifest: "artifacts-manifest-2.txt"
+#   data_dir: "../test-data-2"
+#   repo_url: "https://artifactory.corp.adobe.com/artifactory/generic-my-repo-local/test-data-two/"
