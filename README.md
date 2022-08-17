@@ -212,13 +212,13 @@ This code works mainly for LaReQA which is downloadable from this [repository](h
 ## 10. T-MAML <a name="t-maml"></a>
 The code for T-MAML is mainly in upstream models `multi_meta_ssd/models/upstream/maml.py`.
 
-![image](t-maml)
+![image](t-maml.png)
 
 
 ## 11. T-MAML2T-MAML <a name="t-maml2t-maml"></a>
 The code for T-MAML2T-MAML is mainly in upstream models `multi_meta_ssd/models/upstream/maml_align.py`.
 
-![image](t-maml2t-maml)
+![image](t-maml2t-maml.png)
 
 ## 12. Citation <a name="citation"></a>
 Coming soon
