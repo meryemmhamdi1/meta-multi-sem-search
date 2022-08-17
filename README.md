@@ -1,30 +1,38 @@
-# Python Project Scaffold
+# Multilingual Semantic Search using Meta-Learning:
 
-A scaffold for creating your own cross-platform python project, and potentially your own python package installable by pip.
+This is a pytorch/learn2learn implementation for multilingual semantic search using different flavors of meta-learning. We propose two algorithms T-MAML and T-MAML2T-MAML. T-MAML is an adaptation of meta-transfer learning to multilingual semantic search whereas T-MAML2T-MAML is a fusion of meta-learning and knowledge distillation techniques to smoothen the alignment processes between different modes of semantic search: monolingual, bilingual, and multilingual.
 
-## What does it do? Why did we make it?
+## Table of Contents:
 
-The answers to these questions can be found in the [wiki](https://git.corp.adobe.com/euclid/python-project-scaffold/wiki).
+1. [Abstract](#abstract)
+2. [Set up your environment](#setupenv)
+   2.1. [Install Conda](#installconda)
+   2.2. [Activating Conda](#activateconda)
+3. [Run the setup script](#runsetup)
+   3.1. [Windows + Powershell](#windows)
+   3.2. [Linux/MacOS + bash](#mac)
+4. [Python installation and system PATH](#pythonpath)
+5. [Download Visual Studio Code (vscode)](#vscode)
+6. [Unit testing and visual debugging](#unitests)
+   6.1. [Running the tests](#runtests)
+   6.2. [Adding a new test](#addnewtests)
+7. [Entry points](#entrypoints)
+   7.1. [Details of scripts and config files](#configfiles)
+8. [Datasets](#datasets)
+9. [Meta-Tasks for Multilingual Semantic Search](#metatasks)
+10. [T-MAML](#t-maml)
+11. [T-MAML2T-MAML](#t-maml2t-maml)
+12. [Citation](#citation)
+13. [Credits](#credits)
 
-## Get started
+## 1. Abstract <a name="abstract"></a>:
 
-Click the <img src="./docs/use-this-template.png" height=24> button to create a copy of this repo for your new project.  Give your new repo a name and a description and then click the  <img src="./docs/create-repository-from-template.png" height=24> button.  Github will create your repo and take you to its URL.  From there clone the repo to your computer so we can start customizing the template code for your new project.
+Given the sheer amount of work done on monolingual retrieval/search and its extension to multilingual scenarios using machine translation, we focus in this paper on developing an efficient solution to multilingual semantic search with less reliance on machine translation. Machine translation solutions are often not efficient and not feasible as the retrieved content in the search can be from multiple languages and it is hard to predict which language combinations are involved in real-time. 
+We aim to reduce the gap between different languages used in the query and to be retrieved sentences. We aim to democratize multilingual semantic search for low-resource evaluation and ad-hoc semantic search. For that purpose, we propose a meta-learning approach based on MAML and show its gain compared to standard fine-tuning. We compare to different external baselines based on machine translation and knowledge distillation and propose an alignment approach based on meta-distillation learning to align monolingual and cross-lingual semantic search to multilingual semantic search. 
 
-## Make it your own!
+## 2. Set up your environment <a name="setupenv"></a>
 
-In this scaffold we called the project `multi_meta_ssd`. **To use this scaffold for your own use case, you will want to rename it**. You can do this easily with the [tools/rename.py](tools/rename.py) script:
-
-```
-python tools/rename.py --snake-case awesome_lib --camel-case AwesomeLib --caps-case AWESOME_LIB
-```
-
-You can then delete the `tools/rename.py` script from your new repo.  You can also delete the `docs` folder, if you like.  It just contains images for this README.md.
-
-If you want to, this is a good time to make your first git commit.
-
-## Set up your environment
-
-### Install Conda
+### 2.1. Install Conda <a name="installconda"></a>
 
 You should have [conda](https://docs.conda.io/en/latest/) installed on your machine. If you don't you can use the the Conda package manager can be installed locally at any desired location on your system. 
 
@@ -37,7 +45,7 @@ You should have [conda](https://docs.conda.io/en/latest/) installed on your mach
     powershell tools/install-conda.ps1 \path\to\install
     ```
 
-### Activating Conda
+### 2.2. Activating Conda <a name="activateconda"></a>
 
 Here, I assume that you installed conda in `~/.miniconda3` for mac and `C:/miniconda3 `for windows.
 
@@ -55,11 +63,11 @@ After conda is installed, depending on what os and terminal you have, add these 
   source /c/miniconda3/etc/profile.d/conda.sh
   ```
 
-## Run the setup script
+## 3. Run the setup script <a name="runsetup"></a>
 
 Based on your OS/Terminal combination, you need to add the following commands to initialize your terminal environment correctly. All the setup commands must be run from the repository root.  The first time you run this script it may take a while to install minconda, python, and any dependencies.  Subsequent runs of the script should be much faster.
 
-### Windows + Powershell
+### 3.1. Windows + Powershell <a name="windows"></a>
 
 Powershell (not CMD) is recommended on Windows. We recomend using [Windows Terminal](https://www.microsoft.com/en-us/p/windows-terminal/9n0dx20hk701) which provides a nice developer experience that supports powershell and several quality-of-life features like tabs, sensible copy-paste, Unicode support, etc.  
 
@@ -67,7 +75,7 @@ Powershell (not CMD) is recommended on Windows. We recomend using [Windows Termi
 & tools\setup.ps1
 ```
 
-### Linux/MacOS + bash
+### 3.2. Linux/MacOS + bash <a name="mac"></a>
 
 Note that `zsh` is the default on MacOS these days.  We don't guarantee this will work with `zsh` but it is [pretty easy to switch to `bash`](https://www.howtogeek.com/444596/how-to-change-the-default-shell-to-bash-in-macos-catalina/).
 
@@ -75,7 +83,7 @@ Note that `zsh` is the default on MacOS these days.  We don't guarantee this wil
 source tools/setup.sh
 ```
 
-## Python installation and system PATH
+## 4. Python installation and system PATH <a name="pythonpath"></a>
 * You do not need python installed separately, the setup command took care of it for you (enter `which python` in your terminal to confirm that you are now using the python installed in this project's virtual environment).  You should see `.venv` listed as the active virtual environment in your terminal now, just before the prompt.
 
 ```
@@ -92,7 +100,7 @@ $ conda activate .venv/
 
 * If you changed the dependencies in `tools/conda.yaml` or in `setup.py`, then you will need to `conda deactivate` and run the setup script again, in order to update your virtual environment.  
 
-## Download Visual Studio Code (vscode)
+## 5. Download Visual Studio Code (vscode) <a name="vscode"></a>
 
 Visual Studio Code (hereinafter referred to as __vscode__) offers a very nice development experience with auto complete, linting and debugger integration. It is highly recommeded to use vscode for development. You can download vscode from here: https://code.visualstudio.com/download
 
@@ -105,15 +113,13 @@ Once downloaded, open the vscode app and take care of a few one-time setup steps
 2. (Mac-only) Press Ctrl+Shift+P, type "shell", and select the "Shell Command: Install 'code' command in PATH" entry.
 3. Close VS Code.  We'll reopen it later from the terminal, with the `code` command.
 
-# Linting
-
 We recommend using one of the standard Python linters, such as `pylint` or `flake8`.
 
-# Unit testing and visual debugging
+## 6. Unit testing and visual debugging <a name="unitests"></a>
 
 All the tests go into `tests` folder. Test input data should be kept under `data` which is saved in artifactory. Test temp output files will be created in the `.tmp_test_out` folder.
 
-## Running the tests
+### 6.1. Running the tests <a name="runtests"></a>
 
 You can run the tests with the `python tests/main.py` command.
 
@@ -129,7 +135,7 @@ Once you do this after a few seconds, on top of your test, there will be a `debu
 
 <img src="./docs/run-test.png" width=400>
 
-## Adding a new test
+### 6.2. Adding a new test <a name="addnewtests"></a>
 
 Test should be inside `.py` files that start with the name `test_` and are inside the `tests` folder. They can also be in a subfolder of `tests`, but all subfolders must contain an `__init__.py` (even empty) file.
 
@@ -166,24 +172,35 @@ Every test class inherits from `MultiMetaSSDTestCase` class which in turn inheri
 
 If you need to temporarily disable a test, you can simply change the function name so that it no longer starts with `test_`.  For example, `test_example_fixture` would be skipped if you renamed it to be `do_not_test_example_fixture`.
 
-## Entry points
+## 7. Entry points <a name="entrypoints"></a>
 
-All entry points of the multi_meta_ssd package are managed through a single script `multi_meta_ssd` which resides in `multi_meta_ssd/commands/main.py : main_cmd()`. Each entry point has to have a file named `create_<entry_point>_parser` (e.g., [create_action1_parser.py](multi_meta_ssd/commands/create_action1_parser.py) and [create_action2_parser.py](multi_meta_ssd/commands/create_action2_parser.py)). These then should be called in [main.py](multi_meta_ssd/commands/main.py).
+All entry points of the multi_meta_ssd package are managed through a single script `multi_meta_ssd` which resides in `multi_meta_ssd/commands/main.py : main_cmd()`. Each entry point has to have a file named `create_<entry_point>_parser` (e.g., [asymsearch.py](multi_meta_ssd/commands/asymsearch.py) and [asymsearch_kd.py](multi_meta_ssd/commands/asymsearch_kd.py)). These then should be called in [main.py](multi_meta_ssd/commands/main.py).
 
 You can try the current entry points
 ```
-# Entry point 1, sub entry point 1, sub entry points are useful for organization
-multi_meta_ssd action1 stuff
+# Entry point 1, for multi-purpose running of different fine-tuning, zero-shot and T-MAML experiments:
+multi_meta_ssd asymsearch 
 
-# Entry point 2, sub entry point 1, sub entry points are useful for organization
-multi_meta_ssd action2 subaction1
+# Entry point 2, for multi-purpose running of different T-MAML2T-MAML experiments:
+multi_meta_ssd asymsearch_kd
 
-# Entry point 2, sub entry point 2, sub entry points are useful for organization
-multi_meta_ssd action2 subaction2 --something something
+# Entry point 3, for splitting the data into 5 fold cross-validation splits:
+multi_meta_ssd split_lareqa_cross_val
+
+# Entry point 4, for performance evaluation of different models:
+multi_meta_ssd perf_eval_options
+
+# Entry point 5 to get the statistics of the dataset:
+multi_meta_ssd get_stats
+
+# Entry point 5, for symmetric search:
+multi_meta_ssd sym_eval
+
 ```
 
-## Details of scripts and config files
+### 7.1. Details of scripts and config files <a name="configfiles"></a>
 
+For setup, the following describes the functionality of each script:
 - `tools/setup.ps1`: Run this in powershell in windows with `& tools/setup.ps1` from the project root directory before starting development. If you open a new powershell window or tab, run this script again.
 - `tools/setup.cmd`: Run this in cmd.exe in windows with `call tools/setup.cmd` from the project root directory before starting development. If you open a new cmd.exe window, run this script again.
 - `tools/setup.sh`: Run this in bash in mac or linux with `source tools/setup.sh` from the project root directory before starting development. If you open a new bash window,run this script again.
@@ -193,8 +210,27 @@ multi_meta_ssd action2 subaction2 --something something
 - `tools/artifact.py`, `tools/tiny.yaml`, `tools/artifctory.manifest`: artifactory integration.
 - `tools/conda.yaml`: requirements of the project which will be installed by conda.
 
+For an exhaustive list of scripts that can used for different experiments refer to `multi_meta_ssd/scripts/`.
 
-# Credits
+## 8. Datasets <a name="datasets"></a>
+This code works mainly for LaReQA which is downloadable from this [repository](https://github.com/google-research-datasets/lareqa). The code automatically preprocesses from scratch this dataset depending on which languages are specified in the script options or reloads the previously processed set of questions and candidates saved along with the meta-tasks.
+## 9. Meta-Tasks for Multilingual Semantic Search <a name="metatasks"></a>
+
+## 10. T-MAML <a name="t-maml"></a>
+The code for T-MAML is mainly in upstream models `multi_meta_ssd/models/upstream/maml.py`.
+
+![image](t-maml)
+
+
+## 11. T-MAML2T-MAML <a name="t-maml2t-maml"></a>
+The code for T-MAML2T-MAML is mainly in upstream models `multi_meta_ssd/models/upstream/maml_align.py`.
+
+![image](t-maml2t-maml)
+
+## 12. Citation <a name="citation"></a>
+Coming soon
+
+## 13. Credits <a name="credits"></a>
 
 This scaffold is a fork of the [python-scaffold](https://git.corp.adobe.com/3di/python-scaffold) repo by the titans at 3DI. We simply removed the Artifactory and the Jenkins sections. Additional credits from them: 
 
