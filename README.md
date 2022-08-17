@@ -118,15 +118,9 @@ You can run the tests with the `python tests/main.py` command.
 
 If you like to run all the tests in the debugger, where you can add break points in vscode, open vscode, click on the little bug icon on the left, and click on the Play button.
 
-<img src="./docs/run-all-tests.png" width=150>
-
 To run a single test, open the test file in vscode, click on the lab flask icon on the left, then click on the rotating arrow.
 
-<img src="./docs/erlen-flask.png" width=150>
-
 Once you do this after a few seconds, on top of your test, there will be a `debug` text, click on that to run that specific test.
-
-<img src="./docs/run-test.png" width=400>
 
 ### 6.2. Adding a new test <a name="addnewtests"></a>
 
