@@ -5,8 +5,7 @@ from multi_meta_ssd.log import *
 from multi_meta_ssd.commands.get_arguments import get_train_params, get_path_options, get_adam_optim_params, get_base_model_options, get_language_options, get_meta_task_options, get_translate_train_params
 from multi_meta_ssd.models.downstream.dual_encoders.sym_sent_trans import SBERTForRetrieval
 from multi_meta_ssd.commands.train_evaluate import load_and_cache_examples, train, evaluate, set_device
-from multi_meta_ssd.processors.downstream import utils_lareqa
-from multi_meta_ssd.processors.upstream.meta_task import MetaDataset
+from multi_meta_ssd.processors.upstream.meta_task_stsb import MetaDataset
 from multi_meta_ssd.models.upstream.maml import MetaLearner
 from sentence_transformers import SentenceTransformer, util
 
@@ -73,7 +72,7 @@ def get_config_params(args):
     args.max_answer_length = int(params.get("PARAMS", "MAX_ANSWER_LENGTH"))
 
     params = configparser.ConfigParser()
-    params.read('multi_meta_ssd/config/meta_task_param.ini')
+    params.read('multi_meta_ssd/config/meta_task_param_stsb.ini')
 
     args.train_lang_pairs = str(params.get(args.mode_transfer, "TRAIN_LANG_PAIRS"))
     args.valid_lang_pairs = str(params.get(args.mode_transfer, "VALID_LANG_PAIRS"))
@@ -200,7 +199,8 @@ def read_multi_file(root_path):
     sentences_pair = {"test": {lang_pair: {} for lang_pair in LANG_TRACK_DICT}}
 
     for lang_pair in LANG_TRACK_DICT:
-        with open(os.path.join(root_path, "STS2017.eval.v1.1", "STS.input.track"+LANG_TRACK_DICT[lang_pair]+"."+lang_pair+".txt"), "r") as file:
+        # with open(os.path.join(root_path, "STS2017.eval.v1.1", "STS.input.track"+LANG_TRACK_DICT[lang_pair]+"."+lang_pair+".txt"), "r") as file:
+        with open(os.path.join(root_path, "cross_val", cross_val_split, LANG_TRACK_DICT[lang_pair]+"."+lang_pair+".txt"), "r") as file:
             data = file.read().splitlines()
 
         sentences1 = []
@@ -211,7 +211,9 @@ def read_multi_file(root_path):
             sentences1.append(sent1)
             sentences2.append(sent2)
 
-        with open(os.path.join(root_path, "STS2017.gs", "STS.gs.track"+LANG_TRACK_DICT[lang_pair]+"."+lang_pair+".txt"), "r") as file:
+
+        # with open(os.path.join(root_path, "STS2017.gs", "STS.gs.track"+LANG_TRACK_DICT[lang_pair]+"."+lang_pair+".txt"), "r") as file:
+        with open(os.path.join(root_path, "cross_val", cross_val_split, LANG_TRACK_DICT[lang_pair]+"."+lang_pair+".txt"), "r") as file:
             scores = file.read().splitlines()
 
         scores = [float(score) for score in scores]
@@ -220,11 +222,48 @@ def read_multi_file(root_path):
 
     return sentences_pair
 
+def read_multi_file(root_path, cross_val_split, tokenizer):
+    sentences_pair = {split_name: {lang_pair: {} for lang_pair in LANG_TRACK_DICT} for split_name in SPLIT_NAMES}
+
+    for split_name in SPLIT_NAMES:
+        for lang_pair in LANG_TRACK_DICT:
+            # with open(os.path.join(root_path, "STS2017.eval.v1.1", "STS.input.track"+LANG_TRACK_DICT[lang_pair]+"."+lang_pair+".txt"), "r") as file:
+            with open(os.path.join(root_path, "cross_val", cross_val_split, split_name, lang_pair+".txt"), "r") as file:
+                data = file.read().splitlines()
+
+            sentences1 = []
+            sentences2 = []
+            scores = []
+
+            for line in data:
+                sent1, sent2, score = line.split("\t")
+                sentences1.append(sent1)
+                sentences2.append(sent2)
+                scores.append(float(score))
+
+            sentences_pair[split_name][lang_pair] = {"sentences1": sentences1, "sentences2": sentences2, "scores": scores, "sentences1_feat": {}, "sentences2_feat": {}}
+
+            sentences1_feat = [tokenizer.encode_plus(sent1,
+                                                     max_length=MAX_SENT_LEN,
+                                                     pad_to_max_length=True,
+                                                     return_token_type_ids=True) for sent1 in sentences_pair[split_name][lang_pair]["sentences1"]]
+
+            sentences2_feat = [tokenizer.encode_plus(sent2,
+                                                     max_length=MAX_SENT_LEN,
+                                                     pad_to_max_length=True,
+                                                     return_token_type_ids=True) for sent2 in sentences_pair[split_name][lang_pair]["sentences2"]]
+
+
+            sentences_pair[split_name][lang_pair]["sentences1_feat"] = sentences1_feat
+            sentences_pair[split_name][lang_pair]["sentences2_feat"] = sentences2_feat
+
+    return sentences_pair
+
 def create_meta_dataset_stsb(args, meta_learn_split_config, meta_tasks_dir, tokenizer, embedder=None):
     meta_dataset = {split:{} for split in SPLIT_NAMES}
 
     sentences_pair = read_csv_file(args.data_root)
-    eval_sentences_pair = read_multi_file(args.data_root)
+    eval_sentences_pair = read_multi_file(args.data_root, args.cross_val_split, tokenizer)
 
     for split_name in SPLIT_NAMES:
         for lang in LANGUAGES:
@@ -243,35 +282,30 @@ def create_meta_dataset_stsb(args, meta_learn_split_config, meta_tasks_dir, toke
             sentences_pair[split_name][lang]["sentences1_feat"] = sentences1_feat
             sentences_pair[split_name][lang]["sentences2_feat"] = sentences2_feat
 
-    meta_tasks = None # TODO Later
-    # meta_file_names = [os.path.join(meta_tasks_dir, split_name+"_meta_dataset.pickle") for split_name in SPLIT_NAMES]
+    meta_file_names = [os.path.join(meta_tasks_dir, split_name+"_meta_dataset.pickle") for split_name in SPLIT_NAMES]
 
-    # if not args.update_meta_data and all([os.path.isfile(meta_file_names[i]) for i in range(len(SPLIT_NAMES))]):
-    #     print("Metadatasets exit so will load them ONLYYY ", meta_tasks_dir)
-    #     for split_name in SPLIT_NAMES:
-    #         with open(os.path.join(meta_tasks_dir, split_name+"_meta_dataset.pickle"), "rb") as file:
-    #             meta_dataset[split_name] = pickle.load(file)
-    # else:
-    #     print("META DATASETS DON'T EXIST SO WILL BE CREATED FROM SCRATCH ", meta_tasks_dir)
-    #     for split_name in SPLIT_NAMES:
+    if False:#not args.update_meta_data and all([os.path.isfile(meta_file_names[i]) for i in range(len(SPLIT_NAMES))]):
+        print("Metadatasets exit so will load them ONLYYY ", meta_tasks_dir)
+        for split_name in SPLIT_NAMES:
+            with open(os.path.join(meta_tasks_dir, split_name+"_meta_dataset.pickle"), "rb") as file:
+                meta_dataset[split_name] = pickle.load(file)
+    else:
+        print("META DATASETS DON'T EXIST SO WILL BE CREATED FROM SCRATCH ", meta_tasks_dir)
+        for split_name in SPLIT_NAMES:
+            # Create meta-dataset tasks for that split
+            logger.info("------>Constructing the meta-dataset for {} number of tasks {} .... ".format(split_name,
+                                                                                                      meta_learn_split_config[split_name]["n_tasks_total"]))
+            meta_dataset[split_name] = MetaDataset(meta_learn_split_config,
+                                                   eval_sentences_pair,
+                                                   split_name,
+                                                   tokenizer)
 
-    #         top_results = None # get_all_embeddings_similarities(question_set[split_name]) # TODO Later
+            with open(os.path.join(meta_tasks_dir, split_name+"_meta_dataset.pickle"), "wb") as file:
+                pickle.dump(meta_dataset[split_name], file)
 
-    #         # Create meta-dataset tasks for that split
-    #         logger.info("------>Constructing the meta-dataset for {} number of tasks {} .... ".format(split_name,
-    #                                                                                                   meta_learn_split_config[split_name]["n_tasks_total"]))
-    #         meta_dataset[split_name] = MetaDataset(meta_learn_split_config,
-    #                                                sentences_pair,
-    #                                                split_name,
-    #                                                tokenizer,
-    #                                                top_results)
+    meta_tasks = {split_name: meta_dataset[split_name].meta_tasks for split_name in SPLIT_NAMES}
 
-    #         with open(os.path.join(meta_tasks_dir, split_name+"_meta_dataset.pickle"), "wb") as file:
-    #             pickle.dump(meta_dataset[split_name], file)
-
-    # meta_tasks = {split_name: meta_dataset[split_name].meta_tasks for split_name in SPLIT_NAMES}
-
-    # logger.info({split_name: len(meta_tasks[split_name]) for split_name in SPLIT_NAMES})
+    logger.info({split_name: len(meta_tasks[split_name]) for split_name in SPLIT_NAMES})
 
     return meta_dataset, meta_tasks, sentences_pair, eval_sentences_pair
 
@@ -325,12 +359,18 @@ def zero_shot_evaluation(sentences_pair, lang, tokenizer, base_model,  meta_lear
         computed_scores.append(scores[0][0])
     
     scores_normalized = (computed_scores - np.min(scores_gs)) / (np.max(scores_gs) - np.min(scores_gs))
-    print("scores_normalized:", scores_normalized, "computed_scores:", computed_scores)
 
     min_ = min(len(scores_gs), len(scores_normalized))
     correlation, _ = pearsonr(scores_gs[:min_], scores_normalized[:min_])
    
     return correlation
+
+import itertools
+
+def circle_batch(iterable, batchsize):
+    it = itertools.cycle(iterable)
+    while True:
+        yield list(itertools.islice(it, batchsize))
 
 def train_validate(args, meta_learn_split_config, meta_tasks, meta_tasks_dir, sentences_pair, eval_sentences_pair, tokenizer, base_model, loss_qry_avg_batch_total, loss_qry_all_total, map_qry_all_total, checkpoints_dir, writer):
     no_decay = ["bias", "LayerNorm.weight"]
@@ -347,96 +387,107 @@ def train_validate(args, meta_learn_split_config, meta_tasks, meta_tasks_dir, se
 
     opt = optimizer_to(opt, args.device)
     scores_lang_dict = {split_name: [] for split_name in SPLIT_NAMES+["eval_multi"]}
-    # TODO ADD PREFINETUNING
-    if args.translate_train:
-        #     model_load_file = args.load_pre_finetune_path + "pytorch_model.bin"
-        #     optim_load_file = args.load_pre_finetune_path + "optimizer.pt"
+    meta_learn_alg_name = args.meta_learn_alg
+    if args.meta_learn_alg == "maml":
+        meta_learn_alg_name += "_stsb"
 
-        #     logger.info("Finished Loading SQUAD torch model")
-        #     opt, base_model = load_torch_model(args, opt, base_model, optim_load_file, model_load_file)
+    Model = importlib.import_module('multi_meta_ssd.models.upstream.' + meta_learn_alg_name)
+    meta_learner = Model.MetaLearner(tokenizer,
+                                    base_model,
+                                    args.device,
+                                    meta_learn_split_config,
+                                    opt)
+    if args.use_meta_learn:
+        for ep in tqdm(range(args.num_train_epochs)):
+            for split_name in SPLIT_NAMES:
+                n_tasks_batch = meta_learner.meta_learn_config[split_name]["n_tasks_batch"]
 
-        #     logger.info("Finished Loading SQUAD torch model")
-        #     print("Finished LOADING PREFINETUNING MODEL")
+                print("split_name:", split_name, " n_tasks_batch:", n_tasks_batch, " len(meta_tasks[split_name]):", len(meta_tasks[split_name]),
+                    " len(meta_tasks[split_name])//n_tasks_batch:", len(meta_tasks[split_name])//n_tasks_batch)
 
-        #     for lang_pair in LANG_PAIRS:
-        #         test_evaluation = zero_shot_evaluation(eval_sentences_pair, lang_pair, tokenizer, base_model,  meta_learn_split_config, args, "test")
-        #         print("scores_lang:", test_evaluation)
+                meta_task_batch_gen = circle_batch(meta_tasks[split_name], n_tasks_batch)
+                for batch_step in tqdm(range(0, len(meta_tasks[split_name])//n_tasks_batch)):
+                    meta_tasks_batch = next(meta_task_batch_gen)
 
-        translate_train_languages = args.translate_train_langs.split(",")
-        X = []
-        Y = []
-        S = []
-        for translate_train_lang in translate_train_languages:
-            X.extend(sentences_pair["train"][translate_train_lang]["sentences1_feat"])
-            Y.extend(sentences_pair["train"][translate_train_lang]["sentences2_feat"])
-            S.extend(sentences_pair["train"][translate_train_lang]["scores"])
+                    loss_qry_avg_batch, loss_qry_all, map_qry_all = meta_learner(split_name, meta_tasks_batch, ep, batch_step, writer)
+                    # loss_qry_avg_batch, loss_qry_all, map_qry_all = meta_learner(split_name, meta_tasks_batches, ep, batch_step, writer)
+                    torch.cuda.empty_cache()
+                    gc.collect()
 
-        pbar = tqdm(range(args.num_train_epochs))
-        pbar.set_description("Training Epoch Progress")
-        for epoch in pbar:
-            # X is a torch Variable
-            permutation = torch.randperm(len(X))
+                    loss_qry_avg_batch_total[split_name][ep].append(loss_qry_avg_batch)
+                    loss_qry_all_total[split_name][ep].append(loss_qry_all)
+                    map_qry_all_total[split_name][ep].append(map_qry_all)
 
-            pbar_b = tqdm(range(0, len(X), args.batch_size))
-            pbar_b.set_description(" --- Batch Progress")
+                    save_torch_model(args, meta_learner.base_model, meta_learner.opt, checkpoints_dir, split_name+str(ep))
 
-            for i in pbar_b:
-                opt.zero_grad()
+    else:       
+        if args.translate_train:
+            translate_train_languages = args.translate_train_langs.split(",")
+            X = []
+            Y = []
+            S = []
+            for translate_train_lang in translate_train_languages:
+                X.extend(sentences_pair["train"][translate_train_lang]["sentences1_feat"])
+                Y.extend(sentences_pair["train"][translate_train_lang]["sentences2_feat"])
+                S.extend(sentences_pair["train"][translate_train_lang]["scores"])
 
-                indices = permutation[i:i+args.batch_size]
+            pbar = tqdm(range(args.num_train_epochs))
+            pbar.set_description("Training Epoch Progress")
+            for epoch in pbar:
+                # X is a torch Variable
+                permutation = torch.randperm(len(X))
 
-                q_inputs_ids = [X[j]["input_ids"] for j in indices]
-                q_attention_mask = [X[j]["attention_mask"] for j in indices]
-                q_token_type_ids = [X[j]["token_type_ids"] for j in indices]
+                pbar_b = tqdm(range(0, len(X), args.batch_size))
+                pbar_b.set_description(" --- Batch Progress")
 
-                a_inputs_ids = [Y[j]["input_ids"] for j in indices]
-                a_attention_mask = [Y[j]["attention_mask"] for j in indices]
-                a_token_type_ids = [Y[j]["token_type_ids"] for j in indices]
+                for i in pbar_b:
+                    opt.zero_grad()
 
-                scores_gs = [S[j] for j in indices]
+                    indices = permutation[i:i+args.batch_size]
 
+                    q_inputs_ids = [X[j]["input_ids"] for j in indices]
+                    q_attention_mask = [X[j]["attention_mask"] for j in indices]
+                    q_token_type_ids = [X[j]["token_type_ids"] for j in indices]
 
-                inputs = {"q_input_ids": torch.tensor(q_inputs_ids, dtype=torch.long),
-                          "q_attention_mask": torch.tensor(q_attention_mask, dtype=torch.long),
-                          "q_token_type_ids": torch.tensor(q_token_type_ids, dtype=torch.long),
-                          "a_input_ids": torch.tensor(a_inputs_ids, dtype=torch.long),
-                          "a_attention_mask": torch.tensor(a_attention_mask, dtype=torch.long),
-                          "a_token_type_ids": torch.tensor(a_token_type_ids, dtype=torch.long),
-                          "scores_gs": torch.tensor(scores_gs, dtype=torch.float)} # 
+                    a_inputs_ids = [Y[j]["input_ids"] for j in indices]
+                    a_attention_mask = [Y[j]["attention_mask"] for j in indices]
+                    a_token_type_ids = [Y[j]["token_type_ids"] for j in indices]
 
-                inputs = {k:v.to(args.device) for k, v in inputs.items()}
-                base_model = base_model.to(args.device)
-
-                outputs = base_model(**inputs)
-
-                loss, q_encodings, a_encodings = outputs
-
-                loss.backward()
-                opt.step()
-
-                base_model.zero_grad()
-
-            # logger.info("Test Evaluation from that model at the End of the epoch")
-            # for split_name in SPLIT_NAMES:
-            #     for lang in LANGUAGES:
-            #         scores_lang = zero_shot_evaluation(sentences_pair, lang, tokenizer, base_model,  meta_learn_split_config, args, split_name)
-            #         print("lang:", lang, " scores_lang:", scores_lang)
-
-            #         scores_lang_dict[split_name].append({lang: scores_lang})
+                    scores_gs = [S[j] for j in indices]
 
 
-            logger.info("Test Zero-shot Evaluation from that model on stsb-multi-mt data at the End of the epoch")
-            for lang_pair in LANG_PAIRS:
-                scores_lang = zero_shot_evaluation(eval_sentences_pair, lang_pair, tokenizer, base_model,  meta_learn_split_config, args, "test")
-                print("lang_pair:", lang_pair, " scores_lang:", scores_lang)
+                    inputs = {"q_input_ids": torch.tensor(q_inputs_ids, dtype=torch.long),
+                            "q_attention_mask": torch.tensor(q_attention_mask, dtype=torch.long),
+                            "q_token_type_ids": torch.tensor(q_token_type_ids, dtype=torch.long),
+                            "a_input_ids": torch.tensor(a_inputs_ids, dtype=torch.long),
+                            "a_attention_mask": torch.tensor(a_attention_mask, dtype=torch.long),
+                            "a_token_type_ids": torch.tensor(a_token_type_ids, dtype=torch.long),
+                            "scores_gs": torch.tensor(scores_gs, dtype=torch.float)} # 
 
-                scores_lang_dict["eval_multi"].append({lang_pair: scores_lang})
+                    inputs = {k:v.to(args.device) for k, v in inputs.items()}
+                    base_model = base_model.to(args.device)
+
+                    outputs = base_model(**inputs)
+
+                    loss, q_encodings, a_encodings = outputs
+
+                    loss.backward()
+                    opt.step()
+
+                    base_model.zero_grad()
+
+                logger.info("Test Zero-shot Evaluation from that model on stsb-multi-mt data at the End of the epoch")
+                for lang_pair in LANG_PAIRS:
+                    scores_lang = zero_shot_evaluation(eval_sentences_pair, lang_pair, tokenizer, base_model,  meta_learn_split_config, args, "test")
+                    print("lang_pair:", lang_pair, " scores_lang:", scores_lang)
+
+                    scores_lang_dict["eval_multi"].append({lang_pair: scores_lang})
+
+                ## Save FINAL MODEL
+                save_torch_model(args, base_model, opt, checkpoints_dir, str(epoch))
 
             ## Save FINAL MODEL
-            save_torch_model(args, base_model, opt, checkpoints_dir, str(epoch))
-
-        ## Save FINAL MODEL
-        save_torch_model(args, base_model, opt, checkpoints_dir, "final")
+            save_torch_model(args, base_model, opt, checkpoints_dir, "final")
 
     return loss_qry_avg_batch_total, loss_qry_all_total, map_qry_all_total, scores_lang_dict
 
@@ -492,7 +543,7 @@ def run_main(args):
                                          "beta_lr": args.beta_lr_train,
                                          "lang_pairs": args.train_lang_pairs},
 
-                                "valid": {"n_tasks_total": args.n_valid_tasks,
+                                "dev": {"n_tasks_total": args.n_valid_tasks,
                                           "n_tasks_batch": args.n_valid_tasks_batch,
                                           "n_up_steps": args.n_up_valid_steps,
                                           "alpha_lr": args.alpha_lr_valid,
@@ -508,7 +559,9 @@ def run_main(args):
                                 "max_answer_length": args.max_answer_length,
                                 "n_neg_eg": args.n_neg_eg,
                                 "neg_sampling_approach": args.neg_sampling_approach,
-                                "mode": args.mode_qry
+                                "mode": args.mode_qry,
+                                "k_spt": args.k_spt,
+                                "q_qry": args.q_qry
                               }
 
     ## Create/load meta-dataset
@@ -518,11 +571,9 @@ def run_main(args):
                                                                                              tokenizer,
                                                                                              base_model)
     
-    for lang_pair in ["tr-en"]: #LANG_PAIRS:
+    for lang_pair in LANG_PAIRS:
         test_evaluation = zero_shot_evaluation(eval_sentences_pair, lang_pair, tokenizer, base_model,  meta_learn_split_config, args, "test")
         print("INITIAL map_scores_lang: ", lang_pair, test_evaluation)
-
-    exit(0)
 
     # for lang in LANGUAGES:
     #     test_evaluation = zero_shot_evaluation(sentences_pair, lang, tokenizer, base_model,  meta_learn_split_config, args, "test")
@@ -531,7 +582,7 @@ def run_main(args):
     if args.do_evaluate:
         ## Train and validation
         opt = torch.optim.Adam(base_model.parameters(),
-                            lr=meta_learn_split_config["train"]["beta_lr"])
+                               lr=meta_learn_split_config["train"]["beta_lr"])
 
         # model_load_file = args.load_pre_finetune_path + "pytorch_model.bin"
         # optim_load_file = args.load_pre_finetune_path + "training_args.bin"
