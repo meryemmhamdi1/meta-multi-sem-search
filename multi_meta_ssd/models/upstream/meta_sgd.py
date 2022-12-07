@@ -11,13 +11,11 @@ class MetaLearner(MAML):
     """
 
     def __init__(self,
-                 tokenizer,
                  base_model,
                  device,
                  meta_learn_config):
 
-        super(MetaLearner, self).__init__(tokenizer,
-                                          base_model,
+        super(MetaLearner, self).__init__(base_model,
                                           device,
                                           meta_learn_config)
 

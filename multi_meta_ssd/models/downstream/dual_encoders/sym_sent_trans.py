@@ -1,100 +1,70 @@
 import torch
+from torch import nn
 from transformers import AutoModel
-from transformers.models.bert.modeling_bert import BertModel, BertPreTrainedModel
+from multi_meta_ssd.models.downstream.dual_encoders.utils import mean_pooling, normalized_cls_token
 
-def mean_pooling(model_output, attention_mask):
-    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-
-# def mean_pooling(model_output, attention_mask):
-#     token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-#     input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-#     sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
-#     sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-#     return sum_embeddings / sum_mask
-
-
-class SBERTForRetrieval(BertPreTrainedModel):
-    """ SBERT dual encoder model for retrieval."""
+class SBERTForRetrieval(nn.Module):
+    """ SBERT dual encoder model for symmetric semantic search retrieval."""
 
     def __init__(self, config, trans_model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"):
-        super().__init__(config)
-        self.trans_model = AutoModel.from_pretrained(trans_model_name)#)
-        self.contrastive = False
+        super().__init__()
+        self.trans_model = AutoModel.from_pretrained(trans_model_name)
 
-        def normalized_cls_token(cls_token):
-            return torch.nn.functional.normalize(cls_token, p=2, dim=1)
+        self.cos_score_transformation = nn.Identity()
+        self.loss_fct = nn.MSELoss()
 
-        self.normalized_cls_token = normalized_cls_token
-        self.logit_scale = torch.nn.Parameter(torch.empty(1))
-        torch.nn.init.constant_(self.logit_scale, 100.0)
-        self.triplet_loss = torch.nn.TripletMarginLoss(margin=1.0, p=2)
 
     def forward(
             self,
-            q_input_ids=None,
-            q_attention_mask=None,
-            q_token_type_ids=None,
-            a_input_ids=None,
-            a_attention_mask=None,
-            a_token_type_ids=None,
+            sent1_input_ids=None,
+            sent1_attention_mask=None,
+            sent1_token_type_ids=None,
+            sent2_input_ids=None,
+            sent2_attention_mask=None,
+            sent2_token_type_ids=None,
             scores_gs=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
             inference=False):
 
-        outputs_q = self.trans_model(input_ids=q_input_ids,
-                                     attention_mask=q_attention_mask,
-                                     token_type_ids=q_token_type_ids,
-                                     position_ids=position_ids, # TODO DOUBLE CHECK THESE
-                                     head_mask=head_mask, # TODO DOUBLE CHECK THESE
-                                     inputs_embeds=inputs_embeds)
+        outputs_sent1 = self.trans_model(input_ids=sent1_input_ids,
+                                         attention_mask=sent1_attention_mask,
+                                         token_type_ids=sent1_token_type_ids)
 
-        sentence_q = mean_pooling(outputs_q, q_attention_mask)
+        sentence_sent1 = mean_pooling(outputs_sent1, sent1_attention_mask)
+        sent1_encodings = normalized_cls_token(sentence_sent1)
 
         if inference:
             # In inference mode, only use the first tower to get the encodings.
             # Check how the precision of the model is computed from here in
-            return self.normalized_cls_token(sentence_q).cpu().detach().numpy()
-            # return sentence_q.cpu().detach().numpy()
+            return sent1_encodings.cpu().detach().numpy()
 
-        outputs_a = self.trans_model(input_ids=a_input_ids,
-                                     attention_mask=a_attention_mask,
-                                     token_type_ids=a_token_type_ids,
-                                     position_ids=position_ids, # TODO DOUBLE CHECK THESE
-                                     head_mask=head_mask, # TODO DOUBLE CHECK THESE
-                                     inputs_embeds=inputs_embeds)
+        outputs_sent2 = self.trans_model(input_ids=sent2_input_ids,
+                                         attention_mask=sent2_attention_mask,
+                                         token_type_ids=sent2_token_type_ids)
 
-        sentence_a = mean_pooling(outputs_a, a_attention_mask)
+        sentence_sent2 = mean_pooling(outputs_sent2, sent2_attention_mask)
+        sent2_encodings = normalized_cls_token(sentence_sent2)
 
-        q_encodings = self.normalized_cls_token(sentence_q)
-        a_encodings = self.normalized_cls_token(sentence_a)
-        ## anchors, positive and negative triplets need to be aligned and same shape
+        ##############################################################################
+        #
+        # Old Code for pearson correlation loss
+        #
+        ##############################################################################
+        # scores = torch.squeeze(torch.bmm(sent1_encodings.view(sent1_encodings.shape[0], 1, sent1_encodings.shape[1]), sent2_encodings.view(q_encodings.shape[0], sent2_encodings.shape[1], 1)), axis=1) 
+        # scores = (scores - 0.0) / (5.0 - 0.0)
+        # scores_gs = scores_gs.view(scores_gs.shape[0], 1)
 
-        # print("q_encodings.shape:", q_encodings.shape)
-        # print("a_encodings.shape:", a_encodings.shape)
+        # vx = scores - torch.mean(scores)
+        # vy = scores_gs - torch.mean(scores_gs)
 
-        scores = torch.squeeze(torch.bmm(q_encodings.view(q_encodings.shape[0], 1, q_encodings.shape[1]), a_encodings.view(q_encodings.shape[0], q_encodings.shape[1], 1)), axis=1) 
-        # scores = q_encodings.dot(a_encodings.T)[0][0]
-        scores = (scores - 0.0) / (5.0 - 0.0)
-        scores_gs = scores_gs.view(scores_gs.shape[0], 1)
+        # loss = - vx * vy * torch.rsqrt(torch.sum(vx ** 2)) * torch.rsqrt(torch.sum(vy ** 2))
 
-        # print("scores.shape:", scores.shape, scores)
-        # print("scores_gs.shape:", scores_gs.shape, scores_gs)
+        output = self.cos_score_transformation(torch.cosine_similarity(sent1_encodings, sent2_encodings))
+        loss = self.loss_fct(output, scores_gs.view(-1))
 
-        vx = scores - torch.mean(scores)
-        vy = scores_gs - torch.mean(scores_gs)
+        sent1_encodings = sent1_encodings.cpu().detach().numpy()
+        sent2_encodings = sent2_encodings.cpu().detach().numpy()
 
-        # print("vx:", vx, " vy:", vy)
+        del outputs_sent1
+        del outputs_sent2
 
-        loss = - vx * vy * torch.rsqrt(torch.sum(vx ** 2)) * torch.rsqrt(torch.sum(vy ** 2))
-
-        q_encodings = q_encodings.cpu().detach().numpy()
-        a_encodings = a_encodings.cpu().detach().numpy()
-
-        del outputs_a
-        del outputs_q
-
-        return loss.mean(), q_encodings, a_encodings
+        return loss.mean(), sent1_encodings, sent2_encodings

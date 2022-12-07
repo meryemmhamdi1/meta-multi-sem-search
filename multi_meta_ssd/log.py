@@ -1,13 +1,13 @@
 # This file is adapted from https://git.corp.adobe.com/3di/python-scaffold
 
-import boa_toolkit.utils.log as base
+# import boa_toolkit.utils.log as base
 import json
 import logging
 
-root_logger = base.root_logger
-logger: base.Logger = root_logger.sub_logger("MultiMetaSSD")
-Channel = base.Channel
-ScopedLog = base.ScopedLog
+# root_logger = base.root_logger
+# logger: base.Logger = root_logger.sub_logger("MultiMetaSSD")
+# Channel = base.Channel
+# ScopedLog = base.ScopedLog
 
 # def logger2(log_file):
 #     log_formatter = logging.Formatter('%(asctime)s %(levelname)s %(funcName)s(%(lineno)d) %(message)s',
@@ -33,6 +33,9 @@ ScopedLog = base.ScopedLog
 #     app_log.addHandler(stream_handler)
 #     return app_log
 
+import logging as logger
+
+logger = logger
 
 def read_json(path):
     try:
@@ -61,7 +64,7 @@ def logstats_add(*args):
     s = STATS
     prefix = args[:-2]
     for k in prefix:
-        if k not in s:
+        if k not in s and k != "func":
             s[k] = {}
         s = s[k]
     s[args[-2]] = args[-1]
@@ -69,7 +72,8 @@ def logstats_add(*args):
 
 
 def logstats_add_args(key, args):
-    logstats_add(key, dict((arg, getattr(args, arg)) for arg in vars(args)))
+    args_var = {k: v for k, v in vars(args).items() if k not in ["func", "device"]}
+    logstats_add(key, dict((arg, getattr(args, arg)) for arg in args_var))
 
 
 def flush():

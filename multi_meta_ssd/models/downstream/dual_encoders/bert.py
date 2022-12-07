@@ -11,6 +11,9 @@ class BertForRetrieval(BertPreTrainedModel):
     def __init__(self, config, model_attr_name='bert', model_cls=BertModel):
         super().__init__(config)
 
+        # print("BertForRetrieval model_attr_name:", model_attr_name)
+        # self.trans_model = BertModel.from_pretrained('bert-base-multilingual-cased')
+
         self.model_attr_name = model_attr_name
         self.model_cls = model_cls
         self.contrastive = False
@@ -157,26 +160,41 @@ class BertForRetrieval(BertPreTrainedModel):
             inputs_embeds=None,
             inference=False):
 
-        outputs_q = self.model()(
-            q_input_ids,
-            attention_mask=q_attention_mask,
-            token_type_ids=q_token_type_ids,
-            position_ids=position_ids, # TODO DOUBLE CHECK THESE
-            head_mask=head_mask, # TODO DOUBLE CHECK THESE
-            inputs_embeds=inputs_embeds)
+        # print("FORWARD")
+
+        # print("outputs_q computation => ", " q_input_ids.shape:", q_input_ids.shape, 
+        #       " q_attention_mask.shape: ", q_attention_mask.shape, " q_token_type_ids:", q_token_type_ids.shape,
+        #       " position_ids:", position_ids, " head_mask:", head_mask, 
+        #       " inputs_embeds:", inputs_embeds)
+
+        # print("self.model:", self.model)
+
+        outputs_q = self.model()(q_input_ids, # self.model()
+                                 attention_mask=q_attention_mask,
+                                 token_type_ids=q_token_type_ids,
+                                 position_ids=position_ids, # TODO DOUBLE CHECK THESE
+                                 head_mask=head_mask, # TODO DOUBLE CHECK THESE
+                                 inputs_embeds=inputs_embeds)
 
         if inference:
             # In inference mode, only use the first tower to get the encodings.
             # Check how the precision of the model is computed from here in
             return self.normalized_cls_token(outputs_q[1]).cpu().detach().numpy()
+        
+        # print("outputs_a computation => ", " a_input_ids.shape:", a_input_ids.shape, 
+        #       " a_attention_mask.shape: ", a_attention_mask.shape, " a_token_type_ids:", a_token_type_ids.shape,
+        #       " position_ids.shape:", position_ids, " head_mask.shape:", head_mask, 
+        #       " inputs_embeds.shape:", inputs_embeds)
 
-        outputs_a = self.model()(
-            a_input_ids,
-            attention_mask=a_attention_mask,
-            token_type_ids=a_token_type_ids,
-            position_ids=position_ids, # TODO DOUBLE CHECK THESE
-            head_mask=head_mask, # TODO DOUBLE CHECK THESE
-            inputs_embeds=inputs_embeds)
+        outputs_a = self.model()(a_input_ids,
+                                 attention_mask=a_attention_mask,
+                                 token_type_ids=a_token_type_ids,
+                                 position_ids=position_ids, # TODO DOUBLE CHECK THESE
+                                 head_mask=head_mask, # TODO DOUBLE CHECK THESE
+                                 inputs_embeds=inputs_embeds)
+
+        # print("outputs_n computation => ")
+        # print("n_input_ids.shape:", n_input_ids.shape)
 
         outputs_n = self.model()(
             n_input_ids,
@@ -185,6 +203,8 @@ class BertForRetrieval(BertPreTrainedModel):
             position_ids=position_ids, # TODO DOUBLE CHECK THESE
             head_mask=head_mask, # TODO DOUBLE CHECK THESE
             inputs_embeds=inputs_embeds)
+
+        # print("Normalization => ")
 
         q_encodings = self.normalized_cls_token(outputs_q[1])
         a_encodings = self.normalized_cls_token(outputs_a[1])
@@ -200,12 +220,17 @@ class BertForRetrieval(BertPreTrainedModel):
             loss = torch.nn.CrossEntropyLoss()(logits, labels)
 
         else:
+            # print("Triplet Loss => ")
             loss = self.triplet_loss(q_encodings, a_encodings, n_encodings)
 
 
         q_encodings = q_encodings.cpu().detach().numpy()
         a_encodings = a_encodings.cpu().detach().numpy()
         n_encodings = n_encodings.cpu().detach().numpy()
+
+        # print("q_encodings.shape:", q_encodings.shape, 
+        #       " a_encodings.shape:", a_encodings.shape, 
+        #       " n_encodings.shape:", n_encodings.shape)
 
         del outputs_a
         del outputs_n

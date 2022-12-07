@@ -11,15 +11,13 @@ import gc
 
 class MetaLearner(MetaGeneric):
     def __init__(self,
-                 tokenizer,
                  base_model,
                  device,
                  meta_learn_config,
                  opt=None,
                  task_name="lareqa"):
 
-        super(MetaLearner, self).__init__(tokenizer,
-                                          base_model,
+        super(MetaLearner, self).__init__(base_model,
                                           device,
                                           meta_learn_config)
 
@@ -46,21 +44,25 @@ class MetaLearner(MetaGeneric):
         loss_qry_all = []
         scores_qry_all = []
         loss_qry_batch = 0.0
+
         pbar = tqdm(range(n_tasks_batch))
         pbar.set_description("-----Batch_step %d "%(int(batch_step)//int(n_tasks_batch)))
         self.maml = self.maml.to(self.device)
         for j in pbar:
             self.opt.zero_grad()
-            learner = self.maml.clone()
+            self.learner = self.maml.clone()
 
             loss_spt_avg = 0.0
             scores_spt_avg = 0.0
+            num_spt_steps = len(meta_tasks_batches[j]["spt_features"])*n_up_steps 
 
+            # Inner Loop
             for s_n in range(len(meta_tasks_batches[j]["spt_features"])):
                 spt_set = {k:v.to(self.device) for k, v in meta_tasks_batches[j]["spt_features"][s_n].items()}
-            
+                # for k, v in spt_set.items():
+                #     print("SPT", k, v.shape)
                 for _ in range(n_up_steps):
-                    spt_outputs = learner(**spt_set)
+                    spt_outputs = self.learner(**spt_set)
 
                     if self.task_name == "lareqa":
                         loss_spt, q_encodings_spt, a_encodings_spt, n_encodings_spt = spt_outputs
@@ -73,7 +75,9 @@ class MetaLearner(MetaGeneric):
 
                     else:
                         loss_spt, q_encodings_spt, a_encodings_spt = spt_outputs
-                        scores = compute_sem_sim(q_encodings_spt, a_encodings_spt, meta_tasks_batches[j]["scores_gs_spt"])
+                        scores = compute_sem_sim(q_encodings_spt, 
+                                                 a_encodings_spt, 
+                                                 meta_tasks_batches[j]["scores_gs_spt"])
                         
 
                     logger.info("s_n: {}, loss_spt: {}, {}: {}".format(self.scores_name+"_spt", s_n, loss_spt, scores))
@@ -81,7 +85,7 @@ class MetaLearner(MetaGeneric):
                     loss_spt_avg += loss_spt
                     scores_spt_avg += scores
 
-                    learner.adapt(loss_spt, allow_nograd=True, allow_unused=True)
+                    self.learner.adapt(loss_spt, allow_nograd=True, allow_unused=True)
 
                     del spt_outputs
                     del q_encodings_spt
@@ -90,8 +94,8 @@ class MetaLearner(MetaGeneric):
                     torch.cuda.empty_cache()
                     gc.collect()
 
-            writer.add_scalar(split_name+"_loss_spt", loss_spt/len(meta_tasks_batches[j]["spt_features"]), ep * n_tasks_total + (batch_step+j))
-            writer.add_scalar(split_name+"_"+self.scores_name+"_spt", scores_spt_avg/len(meta_tasks_batches[j]["spt_features"]), ep * n_tasks_total + (batch_step+j))
+            writer.add_scalar(split_name+"_loss_spt", loss_spt_avg/num_spt_steps, ep * n_tasks_total + (batch_step+j))
+            writer.add_scalar(split_name+"_"+self.scores_name+"_spt", scores_spt_avg/num_spt_steps, ep * n_tasks_total + (batch_step+j))
 
 
             del spt_set
@@ -100,25 +104,27 @@ class MetaLearner(MetaGeneric):
 
             loss_qry_avg = 0.0
             scores_qry_avg = 0.0
+            num_qry_steps = len(meta_tasks_batches[j]["qry_features"])
 
+            # Outer Loop Pass
             for q_n in tqdm(range(min(len(meta_tasks_batches[j]["qry_features"]), 4))):
                 qry_set = {k:v.to(self.device) for k, v in meta_tasks_batches[j]["qry_features"][q_n].items()}
-
-                qry_outputs = learner(**qry_set)
+                # for k, v in qry_set.items():
+                #     print("QRY:", k, v.shape)
+                qry_outputs = self.learner(**qry_set)
 
                 if self.task_name == "lareqa":
                     loss_qry, q_encodings_qry, a_encodings_qry, n_encodings_qry = qry_outputs
                     scores = mean_avg_prec_at_k_meta(meta_tasks_batches[j]["qry_questions"][q_n], # question_list
-                                                        q_encodings_qry,
-                                                        meta_tasks_batches[j]["qry_candidates"][q_n],
-                                                        np.concatenate((a_encodings_qry, n_encodings_qry), axis=0),
-                                                        k=1)
+                                                     q_encodings_qry,
+                                                     meta_tasks_batches[j]["qry_candidates"][q_n],
+                                                     np.concatenate((a_encodings_qry, n_encodings_qry), axis=0),
+                                                     k=1)
                 else:
                     loss_qry, q_encodings_qry, a_encodings_qry = qry_outputs
                     scores = compute_sem_sim(q_encodings_qry, a_encodings_qry, meta_tasks_batches[j]["scores_gs_qry"])
 
                 loss_qry_avg += loss_qry
-
                 scores_qry_avg += scores
 
                 logger.info("q_n: {}, loss_qry: {}, {}: {}".format(self.scores_name+"_qry", q_n, loss_qry, scores))
@@ -140,28 +146,25 @@ class MetaLearner(MetaGeneric):
                 torch.cuda.empty_cache()
                 gc.collect()
 
-            writer.add_scalar(split_name+"_loss_qry", loss_qry_avg/len(meta_tasks_batches[j]["qry_features"]), ep * n_tasks_total + (batch_step+j))
-            writer.add_scalar(split_name+"_"+self.scores_name+"_qry", scores_qry_avg/len(meta_tasks_batches[j]["qry_features"]), ep * n_tasks_total + (batch_step+j))
+            writer.add_scalar(split_name+"_loss_qry", loss_qry_avg/num_qry_steps, ep * n_tasks_total + (batch_step+j))
+            writer.add_scalar(split_name+"_"+self.scores_name+"_qry", scores_qry_avg/num_qry_steps, ep * n_tasks_total + (batch_step+j))
 
         if split_name != "test":
             loss_qry_avg_batch = loss_qry_batch / n_tasks_batch
             for p in self.maml.parameters():
                 if p.grad is not None:
                     p.grad.mul_(1.0 / n_tasks_batch)
+            print("loss_qry_avg_batch:", loss_qry_avg_batch)
             loss_qry_avg_batch.backward()
             self.opt.step()
 
-        del learner
         self.base_model = self.base_model.cpu()
         torch.cuda.empty_cache()
         gc.collect()
         self.maml = self.maml.cpu()
         if split_name != "test":
             loss_qry_avg_batch = loss_qry_avg_batch.cpu().detach().numpy()
-            print("loss_qry_avg_batch:", loss_qry_avg_batch)
         else:
             loss_qry_avg_batch = 0
-        print("loss_qry_all:", loss_qry_all)
-        print("scores_qry_all:", scores_qry_all)
 
         return loss_qry_avg_batch, loss_qry_all, scores_qry_all

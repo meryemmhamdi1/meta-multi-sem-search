@@ -5,6 +5,7 @@ import torch
 from tqdm import tqdm
 from multi_meta_ssd.processors.downstream.sb_sed import infer_sentence_breaks
 from multi_meta_ssd.log import *
+# import logging as logger
 
 class Question():
     """Question class holding information about a single question.
@@ -18,12 +19,13 @@ class Question():
     encoding (np.array): The encoding of the question.
     """
 
-    def __init__(self, question, xling_id, lang, encoding):
+    def __init__(self, question, xling_id, lang, encoding, trans=None):
         self.question = question
         self.xling_id = xling_id
         self.uid = "{}_{}".format(xling_id, lang)
         self.language = lang
         self.encoding = encoding
+        self.translation = trans
 
     def __hash__(self):
         return hash(self.uid)
@@ -49,12 +51,14 @@ class Candidate():
         encoding (np.array): The encoding of the candidate answer.
     """
 
-    def __init__(self, sentence, context, lang, context_id, sent_pos, encoding):
+    def __init__(self, sentence, context, lang, context_id, sent_pos, encoding, trans_sent=None, trans_context=None):
         self.uid = "{}_{}".format(context_id, sent_pos)
         self.sentence = sentence
         self.context = context
         self.language = lang
         self.encoding = encoding
+        self.trans_sent = trans_sent
+        self.trans_context = trans_context
 
     def __hash__(self):
         return hash(self.uid)
@@ -189,6 +193,7 @@ class CandidateSet():
             filtered_answers.append(selected_answer)
         return filtered_answers
 
+
 def convert_features(meta_learn_split_config, meta_set, tokenizer):
      ## Define batches of meta-tasks
     q_features = tokenizer.encode_plus(meta_set.question_cluster.question,
@@ -303,8 +308,6 @@ def encode_sentence(sentence, tokenizer, device, max_length, base_model):
 
     return encoding
 
-
-
 def load_data(squad_per_lang, base_model, tokenizer, device, meta_learn_split_config):
     """Load and encode SQuAD-format data from parsed JSON documents.
 
@@ -369,11 +372,11 @@ def generate_examples(data, language):
     num_paragraphs = 0
     num_questions = 0
     count_skipped_qst = 0
-    titles = []
-    for passage in data["data"]:
-        title = passage["title"]
-        if title not in titles:
-            titles.append(title)
+    # titles = []
+    # for passage in data["data"]:
+    #     title = passage["title"]
+    #     if title not in titles:
+    #         titles.append(title)
 
     for passage in tqdm(data["data"]):
         num_passages += 1
@@ -381,7 +384,7 @@ def generate_examples(data, language):
             num_paragraphs += 1
             context_id = "{}_{}".format(language, num_paragraphs)
             context = paragraph["context"]
-            if language == "en":
+            if True: #language == "en":
                 sentence_breaks = list(infer_sentence_breaks(context))
             else:
                 sentence_breaks = paragraph["sentence_breaks"]
@@ -389,6 +392,7 @@ def generate_examples(data, language):
                 str(context[start:end]) for (start, end) in sentence_breaks]
             for qas in paragraph["qas"]:
                 num_questions += 1
+                # print("question:", qas["question"], " answer:", qas["answers"][0])
                 # If there are more than one answer per question then skip that question
                 if len(qas["answers"]) > 1:
                     count_skipped_qst += 1
@@ -414,8 +418,8 @@ def generate_examples(data, language):
                 #         "contained within any sentence. This is likely due to a "
                 #         "sentence breaking error.")
 
-    logger.info("Language %s: Processed %s passages, %s titles, %s paragraphs, %s questions, and %s skipped."
-                % (language, num_passages,  len(titles), num_paragraphs, num_questions, count_skipped_qst))
+    logger.info("Language %s: Processed %s passages, %s paragraphs, %s questions, and %s skipped."
+                % (language, num_passages, num_paragraphs, num_questions, count_skipped_qst))
 
 
 def save_encodings(output_dir, questions, candidates):
@@ -495,7 +499,7 @@ def mean_avg_prec_at_k_meta(question_list, question_vecs, all_candidates_list, a
     """Computes mAP@k on question_set and candidate_set with encodings."""
     # TODO(umaroy): add test for this method on a known set of encodings.
     # Current run_xreqa_eval.sh with X_Y encodings generates mAP of 0.628.
-    print("len(question_list):", len(question_list), " len(question_vecs):", len(question_vecs))
+    # print("len(question_list):", len(question_list), " len(question_vecs):", len(question_vecs))
     ap_scores = []
     for i, _ in enumerate(question_list):
         # print("question_vecs[i]:", question_vecs[i])
@@ -506,3 +510,24 @@ def mean_avg_prec_at_k_meta(question_list, question_vecs, all_candidates_list, a
         ap_scores.append(average_precision_at_k(np.where(y_true == 1)[0], np.squeeze(scores).argsort()[::-1], k))
 
     return np.mean(ap_scores)
+
+from scipy.stats import pearsonr
+
+def compute_sem_sim(sentence1_encodings, sentence2_encodings, scores_gs):
+    computed_scores = []
+    scores_gs = scores_gs.numpy()
+    for i in range(len(sentence1_encodings)):
+        scores = sentence1_encodings[i].dot(sentence2_encodings[i].T)
+        computed_scores.append(scores)
+        
+    # scores_normalized = (computed_scores - np.min(scores_gs)) / (np.max(scores_gs) - np.min(scores_gs))
+
+    min_ = min(len(scores_gs), len(computed_scores))
+    # print("computed_scores:", computed_scores, " scores_normalized:", scores_normalized, " scores_gs:", scores_gs)
+    try:
+        correlation, _ = pearsonr(scores_gs[:min_], computed_scores[:min_])
+    except:
+        print("computed_scores:", computed_scores, " scores_normalized:", computed_scores, " scores_gs:", scores_gs)
+        exit(0)
+   
+    return correlation

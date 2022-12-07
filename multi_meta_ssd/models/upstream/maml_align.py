@@ -11,14 +11,12 @@ import random
 
 class MetaLearner(MetaGeneric):
     def __init__(self,
-                 tokenizer,
                  base_model,
                  device,
                  meta_learn_config,
                  opt=None):
 
-        super(MetaLearner, self).__init__(tokenizer,
-                                          base_model,
+        super(MetaLearner, self).__init__(base_model,
                                           device,
                                           meta_learn_config)
 
@@ -63,7 +61,7 @@ class MetaLearner(MetaGeneric):
                 else:
                     meta_spt = meta_tasks_batches[j]["qry_features"][rank-1]
                     spt_questions = meta_tasks_batches[j]["qry_questions"][rank-1]
-              sc      spt_candidates = meta_tasks_batches[j]["qry_questions"][rank-1]
+                    spt_candidates = meta_tasks_batches[j]["qry_questions"][rank-1]
                     
                 meta_qry = meta_tasks_batches[j]["qry_features"][rank]
                 qry_questions = meta_tasks_batches[j]["qry_questions"][rank]

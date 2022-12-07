@@ -229,7 +229,7 @@ class MetaDataset(object):
 
         print("COUNTING LANGUAGE ALIGNMENTS IN THE QUESTION SET ", counter)
 
-        n_tasks_per_spt_lang = self.n_tasks // len(self.lang_pairs)
+        n_tasks_per_spt_lang = self.n_tasks // len(self.lang_pairs.split("|"))
 
         for lang_pair in self.lang_pairs.split("|"):
             pbar = tqdm(range(n_tasks_per_spt_lang))
@@ -256,4 +256,6 @@ class MetaDataset(object):
                                      self.top_results)
 
                 self.meta_tasks.append(meta_task)
+
+        print("split:", self.split, " len(self.meta_tasks):", len(self.meta_tasks))
 

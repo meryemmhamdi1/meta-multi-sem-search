@@ -9,13 +9,11 @@ from tqdm import tqdm
 
 class MetaLearner(MetaGeneric):
     def __init__(self,
-                 tokenizer,
                  base_model,
                  device,
                  meta_learn_config):
 
-        super(MetaLearner, self).__init__(tokenizer,
-                                          base_model,
+        super(MetaLearner, self).__init__(base_model,
                                           device,
                                           meta_learn_config)
 
@@ -28,7 +26,7 @@ class MetaLearner(MetaGeneric):
 
         self.adapt_opt_state = self.adapt_opt.state_dict()
 
-    def forward(self,  split_name, meta_tasks_batch, ep, batch_step, writer):
+    def forward(self, split_name, meta_tasks_batch, ep, batch_step, writer):
         n_tasks_total = self.splits_params[split_name]["n_tasks_total"]
         n_tasks_batch = self.splits_params[split_name]["n_tasks_batch"]
         n_up_steps = self.splits_params[split_name]["n_up_steps"]

@@ -4,10 +4,9 @@ from multi_meta_ssd.commands.get_arguments import get_train_params, get_path_opt
 from multi_meta_ssd.models.downstream.dual_encoders.bert import BertForRetrieval
 from multi_meta_ssd.models.downstream.dual_encoders.sent_trans import SBERTForRetrieval
 from multi_meta_ssd.models.downstream.dual_encoders.xlm_roberta import XLMRobertaConfig, XLMRobertaForRetrieval
-from multi_meta_ssd.commands.train_evaluate import load_and_cache_examples, train, evaluate, set_device
+from multi_meta_ssd.commands.train_evaluate_utils import set_device
 from multi_meta_ssd.processors.downstream import utils_lareqa
 from multi_meta_ssd.processors.upstream.meta_task_merged import MetaDataset
-from multi_meta_ssd.models.upstream.maml import MetaLearner
 from sentence_transformers import SentenceTransformer, util
 
 from tqdm import tqdm
@@ -36,13 +35,16 @@ def get_config_params(args):
     paths = configparser.ConfigParser()
     paths.read('multi_meta_ssd/config/paths.ini')
 
-    location = "SENSEI"
+    location = "ENDEAVOUR"
     # location = "LOCAL"
 
-    args.data_root = str(paths.get(location, "DATA_ROOT"))
-    args.train_file = str(paths.get(location, "TRAIN_FILE"))
-    args.predict_file = str(paths.get(location, "PREDICT_FILE"))
-    args.out_dir = str(paths.get(location, "OUT_DIR"))
+    root_dir = str(paths.get(location, "ROOT"))
+
+    args.data_root = root_dir + str(paths.get(location, "DATA_ROOT"))
+    args.train_file = root_dir + str(paths.get(location, "TRAIN_FILE"))
+    args.predict_file = root_dir + str(paths.get(location, "PREDICT_FILE"))
+    args.out_dir = root_dir + str(paths.get(location, "OUT_DIR"))
+    args.load_pre_finetune_path = root_dir + str(paths.get(location, "LOAD_PRE_FINETUNE_PATH"))
 
     params = configparser.ConfigParser()
     params.read('multi_meta_ssd/config/down_model_param.ini')
@@ -416,8 +418,11 @@ def train_validate(args, meta_learn_split_config, meta_tasks, meta_tasks_dir, qu
             # EITHER LOAD THE MODEL
             # model_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs-temp/squad/bert-base-multilingual-cased_LR3e-5_EPOCH3.0_maxlen384_batchsize4_gradacc8/pytorch_model.bin"
             # optim_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs-temp/squad/bert-base-multilingual-cased_LR3e-5_EPOCH3.0_maxlen384_batchsize4_gradacc8/training_args.bin"
-            model_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs/lareqa/bert-base-multilingual-cased_LR2e-5_EPOCH3.0_LEN352/checkpoint-9000/pytorch_model.bin"
-            optim_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs/lareqa/bert-base-multilingual-cased_LR2e-5_EPOCH3.0_LEN352/checkpoint-9000/optimizer.pt"
+            # model_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs/lareqa/bert-base-multilingual-cased_LR2e-5_EPOCH3.0_LEN352/checkpoint-9000/pytorch_model.bin"
+            # optim_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs/lareqa/bert-base-multilingual-cased_LR2e-5_EPOCH3.0_LEN352/checkpoint-9000/optimizer.pt"
+
+            model_load_file = args.load_pre_finetune_path + "pytorch_model.bin"
+            optim_load_file = args.load_pre_finetune_path + "optimizer.pt"
 
             logger.info("Finished Loading SQUAD torch model")
             opt, base_model = load_torch_model(args, opt, base_model, optim_load_file, model_load_file)
@@ -464,19 +469,21 @@ def train_validate(args, meta_learn_split_config, meta_tasks, meta_tasks_dir, qu
             map_scores_lang = multilingual_zero_shot_evaluation(question_set, candidate_set, args.languages.split(","), tokenizer, base_model,  meta_learn_split_config, args, "test")
             print("map_scores_lang:", map_scores_lang, " MEAN:", np.mean([map_scores_lang[lang] for lang in map_scores_lang if lang!= "en"]))
 
-    model_load_file = "/sensei-fs/users/mhamdi/Results/meta-multi-sem-search/asym/sbert-retrieval/maml/MONO_BIL/TripletLoss/CrossVal_0/checkpoints/pytorch_model_0.bin"
-    optim_load_file = "/sensei-fs/users/mhamdi/Results/meta-multi-sem-search/asym/sbert-retrieval/maml/MONO_BIL/TripletLoss/CrossVal_0/checkpoints/optimizer_0.pt"
+    # model_load_file = "/sensei-fs/users/mhamdi/Results/meta-multi-sem-search/asym/sbert-retrieval/maml/MONO_BIL/TripletLoss/CrossVal_0/checkpoints/pytorch_model_0.bin"
+    # optim_load_file = "/sensei-fs/users/mhamdi/Results/meta-multi-sem-search/asym/sbert-retrieval/maml/MONO_BIL/TripletLoss/CrossVal_0/checkpoints/optimizer_0.pt"
 
+    model_load_file = args.load_pre_finetune_path + "pytorch_model.bin"
+    optim_load_file = args.load_pre_finetune_path + "optimizer.pt"
+    
     logger.info("Finished Loading SQUAD torch model")
     opt, base_model = load_torch_model(args, opt, base_model, optim_load_file, model_load_file)
     opt = optimizer_to(opt, args.device)
     if args.use_meta_learn:
         Model = importlib.import_module('multi_meta_ssd.models.upstream.' + args.meta_learn_alg)
-        meta_learner = Model.MetaLearner(tokenizer,
-                                        base_model,
-                                        args.device,
-                                        meta_learn_split_config,
-                                        opt)
+        meta_learner = Model.MetaLearner(base_model,
+                                         args.device,
+                                         meta_learn_split_config,
+                                         opt)
 
 
     train_map_scores_lang = []
@@ -736,8 +743,12 @@ def train_validate_debug(args, meta_learn_split_config, meta_tasks, question_set
                 eps=1e-8)
     # model_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs-temp/squad/bert-base-multilingual-cased_LR3e-5_EPOCH3.0_maxlen384_batchsize4_gradacc8/pytorch_model.bin"
     # optim_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs-temp/squad/bert-base-multilingual-cased_LR3e-5_EPOCH3.0_maxlen384_batchsize4_gradacc8/training_args.bin"
-    model_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs/lareqa/bert-base-multilingual-cased_LR2e-5_EPOCH3.0_LEN352/checkpoint-9000/pytorch_model.bin"
-    optim_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs/lareqa/bert-base-multilingual-cased_LR2e-5_EPOCH3.0_LEN352/checkpoint-9000/optimizer.pt"
+    
+    # model_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs/lareqa/bert-base-multilingual-cased_LR2e-5_EPOCH3.0_LEN352/checkpoint-9000/pytorch_model.bin"
+    # optim_load_file = "/sensei-fs/users/mhamdi/xtreme/outputs/lareqa/bert-base-multilingual-cased_LR2e-5_EPOCH3.0_LEN352/checkpoint-9000/optimizer.pt"
+
+    model_load_file = args.load_pre_finetune_path + "pytorch_model.bin"
+    optim_load_file = args.load_pre_finetune_path + "optimizer.pt"
 
     logger.info("Finished Loading SQUAD torch model")
     opt, base_model = load_torch_model(args, opt, base_model, optim_load_file, model_load_file)

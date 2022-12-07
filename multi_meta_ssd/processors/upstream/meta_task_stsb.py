@@ -77,15 +77,15 @@ class MetaSet(object):
 
         self.scores = torch.tensor([meta_point.score for meta_point in meta_points], dtype=torch.float)
 
-        self.inputs = {"q_"+k: v for k, v in self.sentences1_feat.items()}
-        self.inputs.update({"a_"+k: v for k, v in self.sentences2_feat.items()})
+        self.inputs = {"sent1_"+k: v for k, v in self.sentences1_feat.items()}
+        self.inputs.update({"sent2_"+k: v for k, v in self.sentences2_feat.items()})
         self.inputs.update({"scores_gs": self.scores})
         
 
 class MetaTask(object):
     """ This class is to organize the structure of each task consisting of support and query.
         To start with, we will use corresponding questions in other language and off-the-shelf tool to get the most similar questions in the same language. """
-    def __init__(self, id, sentences_pair, spt_sent1_lang, spt_sent2_lang, qry_sent1_lang, qry_sent2_lang, meta_learn_split_config, tokenizer, spt_indices, qry_indices):
+    def __init__(self, id, sentences_pair, translate_train, spt_sent1_lang, spt_sent2_lang, qry_sent1_lang, qry_sent2_lang, meta_learn_split_config, tokenizer, spt_indices, qry_indices):
         """
             @sentences_pair: dictionary of sentence pairs per split and language pair
             @qry_lang: the language(s) of the query meta set
@@ -93,14 +93,13 @@ class MetaTask(object):
         """
         self.id = id
         self.sentences_pair = sentences_pair
+        self.translate_train = translate_train
 
         self.spt_sent1_lang = spt_sent1_lang
         self.spt_sent2_lang = spt_sent2_lang
+
         self.qry_sent1_lang = qry_sent1_lang
         self.qry_sent2_lang = qry_sent2_lang
-
-        self.spt_lang = self.spt_sent1_lang + "-" + self.spt_sent2_lang
-        self.qry_lang = self.qry_sent1_lang + "-" + self.qry_sent2_lang
 
         self.meta_learn_split_config = meta_learn_split_config
         self.tokenizer = tokenizer
@@ -111,10 +110,10 @@ class MetaTask(object):
         # self.spt_indices = circ(self.spt_indices)
         # self.qry_indices = circ(self.qry_indices)
 
-        self.spt = self.create_meta_set("train", meta_learn_split_config["k_spt"], self.spt_lang, self.spt_indices)
-        self.qry = self.create_meta_set("dev", meta_learn_split_config["q_qry"], self.qry_lang, self.qry_indices)
+        self.spt = self.create_meta_set("train", meta_learn_split_config["k_spt"], self.spt_sent1_lang, self.spt_sent2_lang, self.spt_indices)
+        self.qry = self.create_meta_set("dev", meta_learn_split_config["q_qry"], self.qry_sent1_lang, self.qry_sent2_lang, self.qry_indices)
         
-    def create_meta_set(self, split_name, len_meta_task, lang_pair, indices):
+    def create_meta_set(self, split_name, len_meta_task, sent1_lang, sent2_lang, indices): # lang_pair
         # Pick k-shot or q_qry sentence pairs at a time
         meta_points = []
         for _ in range(len_meta_task):
@@ -124,11 +123,17 @@ class MetaTask(object):
 
             # print("rnd_idx:", rnd_idx)
 
-            sent1 = self.sentences_pair[split_name][lang_pair]["sentences1"][rnd_idx]
-            sent2 = self.sentences_pair[split_name][lang_pair]["sentences2"][rnd_idx]
-            score = self.sentences_pair[split_name][lang_pair]["scores"][rnd_idx]
-            sent1_feat = self.sentences_pair[split_name][lang_pair]["sentences1_feat"][rnd_idx]
-            sent2_feat = self.sentences_pair[split_name][lang_pair]["sentences2_feat"][rnd_idx]
+            if self.translate_train:
+                lang_pair_1 = sent1_lang
+                lang_pair_2 = sent2_lang
+            else:
+                lang_pair_1 = lang_pair_2 = sent1_lang + "-" + sent2_lang
+            
+            sent1 = self.sentences_pair[split_name][lang_pair_1]["sentences1"][rnd_idx]
+            sent2 = self.sentences_pair[split_name][lang_pair_2]["sentences2"][rnd_idx]
+            score = self.sentences_pair[split_name][lang_pair_1]["scores"][rnd_idx]
+            sent1_feat = self.sentences_pair[split_name][lang_pair_1]["sentences1_feat"][rnd_idx]
+            sent2_feat = self.sentences_pair[split_name][lang_pair_2]["sentences2_feat"][rnd_idx]
 
             meta_point = MetaPoint(sentence1=sent1,
                                    sentence2=sent2,
@@ -147,13 +152,14 @@ class MetaTask(object):
 
 class MetaDataset(object):
     """ This class holds sets of tasks for different meta-datasets (train, dev, and test)"""
-    def __init__(self, meta_learn_split_config, sentences_pair, split_name, tokenizer): # n_train_tasks, n_valid_tasks, n_test_tasks, , train_lang_pairs, valid_lang_pairs, test_lang_pairs):
+    def __init__(self, meta_learn_split_config, sentences_pair, split_name, tokenizer, translate_train): # n_train_tasks, n_valid_tasks, n_test_tasks, , train_lang_pairs, valid_lang_pairs, test_lang_pairs):
         self.n_tasks = meta_learn_split_config[split_name]["n_tasks_total"]
         self.lang_pairs = meta_learn_split_config[split_name]["lang_pairs"]
         self.sentences_pair = sentences_pair
         self.meta_learn_split_config = meta_learn_split_config
-        self.tokenizer = tokenizer
         self.split_name = split_name
+        self.tokenizer = tokenizer
+        self.translate_train = translate_train
         self.meta_tasks = []
 
         self.create_meta_tasks()
@@ -170,6 +176,10 @@ class MetaDataset(object):
                 spt_sent1_lang, spt_sent2_lang = spt_langs.split("-")
                 qry_sent1_lang, qry_sent2_lang = qry_langs.split("-")
 
+                if self.translate_train:
+                    spt_langs = spt_sent1_lang
+                    qry_langs = qry_sent1_lang
+
                 spt_indices = list(range(len(self.sentences_pair["train"][spt_langs]["sentences1"])))
                 qry_indices = list(range(len(self.sentences_pair["dev"][qry_langs]["sentences1"])))
 
@@ -180,6 +190,7 @@ class MetaDataset(object):
                 # Construct the support and query sets
                 meta_task = MetaTask(lang_pair+"_"+str(metatask_n),
                                      self.sentences_pair,
+                                     self.translate_train,
                                      spt_sent1_lang,
                                      spt_sent2_lang,
                                      qry_sent1_lang,
@@ -188,14 +199,6 @@ class MetaDataset(object):
                                      self.tokenizer, 
                                      spt_indices,
                                      qry_indices)
-
-                # print("meta_task.spt.sentences1:", len(meta_task.spt.sentences1), 
-                #      " meta_task.spt.sentences2: ", len(meta_task.spt.sentences2), 
-                #      " meta_task.spt.scores: ", len(meta_task.spt.scores))
-
-                # print("meta_task.qry.sentences1:", len(meta_task.qry.sentences1), 
-                #      " meta_task.qry.sentences2: ", len(meta_task.qry.sentences2), 
-                #      " meta_task.qry.scores: ", len(meta_task.qry.scores))
 
                 self.meta_tasks.append(meta_task)
 

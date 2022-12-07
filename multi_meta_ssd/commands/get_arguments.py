@@ -32,6 +32,8 @@ def get_path_options(parser):
     parser.add_argument('--load_pre_finetune_path',  type=str, default="",
                               help='The path from which to load the pre-finetuning path')
 
+                              
+
 # TODO CHANGE get_base_model_options TO MAKE IT COMPLY WITH THE MODEL
 def get_base_model_options(parser):
 
@@ -243,6 +245,10 @@ def get_adam_optim_params(parser):
 
     parser.add_argument('--gamma', type=float, default=0.1, help='gamma for the scheduler')
 
+def get_translate_train_params(parser):
+     parser.add_argument("--translate_train", action='store_true', help='Whether to do translate train.')
+     parser.add_argument("--translate_train_langs", type=str, default="ar", help='The languages on which to train on in translate-train delimited by a comma.')
+
 def get_train_params(parser):
     """ Training Arguments """
     parser.add_argument("--use_triplet_loss", action='store_true',
@@ -268,7 +274,7 @@ def get_train_params(parser):
 
     parser.add_argument('--batch_size', type=int, default=8, help='Batch size in the pre-training process')
 
-    parser.add_argument("--num_train_epochs", default=5, type=float, help="Total number of training epochs to perform.")
+    parser.add_argument("--num_train_epochs", default=2, type=float, help="Total number of training epochs to perform.")
 
     parser.add_argument('--save_every', type=int, default=1, help='How often to save a checkpoint of the model')
 
